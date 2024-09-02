@@ -4,6 +4,7 @@ vim.wo.number = true
 -- Set up color scheme
 vim.o.termguicolors = true
 vim.o.background = "dark"
+vim.o.encoding = 'utf-8'
 
 -- Set leader key to space
 vim.g.mapleader = " "
@@ -24,7 +25,6 @@ vim.opt.rtp:prepend(lazypath)
 
 -- Plugin setup
 require("lazy").setup({
-  -- Existing plugins
   {
     "nvim-tree/nvim-tree.lua",
     dependencies = {
@@ -42,10 +42,16 @@ require("lazy").setup({
               file = true,
               folder = true,
               folder_arrow = true,
-              git = true,
             },
           },
         },
+    	git = {
+    	  ignore = false,
+    	},
+    	filters = {
+    	  dotfiles = false,
+    	  git_ignored = false,
+    	},
       })
 
       -- Key mapping to toggle nvim-tree
@@ -53,8 +59,11 @@ require("lazy").setup({
 
       -- Automatically open nvim-tree when Neovim starts
       vim.api.nvim_create_autocmd("VimEnter", {
-        callback = function()
+	callback = function()
           require("nvim-tree.api").tree.open()
+          vim.defer_fn(function()
+            vim.cmd("wincmd p")
+          end, 0)
         end
       })
     end,
@@ -106,58 +115,13 @@ require("lazy").setup({
   {
     "neovim/nvim-lspconfig",
     dependencies = {
-      "hrsh7th/nvim-cmp",
-      "hrsh7th/cmp-nvim-lsp",
       "L3MON4D3/LuaSnip",
     },
     config = function()
       local lspconfig = require("lspconfig")
-      local cmp = require("cmp")
       local luasnip = require("luasnip")
 
-      cmp.setup({
-        snippet = {
-          expand = function(args)
-            luasnip.lsp_expand(args.body)
-          end,
-        },
-        mapping = cmp.mapping.preset.insert({
-          ['<C-d>'] = cmp.mapping.scroll_docs(-4),
-          ['<C-f>'] = cmp.mapping.scroll_docs(4),
-          ['<C-Space>'] = cmp.mapping.complete(),
-          ['<CR>'] = cmp.mapping.confirm {
-            behavior = cmp.ConfirmBehavior.Replace,
-            select = true,
-          },
-          ['<Tab>'] = cmp.mapping(function(fallback)
-            if cmp.visible() then
-              cmp.select_next_item()
-            elseif luasnip.expand_or_jumpable() then
-              luasnip.expand_or_jump()
-            else
-              fallback()
-            end
-          end, { 'i', 's' }),
-          ['<S-Tab>'] = cmp.mapping(function(fallback)
-            if cmp.visible() then
-              cmp.select_prev_item()
-            elseif luasnip.jumpable(-1) then
-              luasnip.jump(-1)
-            else
-              fallback()
-            end
-          end, { 'i', 's' }),
-        }),
-        sources = {
-          { name = 'nvim_lsp' },
-          { name = 'luasnip' },
-        },
-      })
-
-      local capabilities = require('cmp_nvim_lsp').default_capabilities()
-
       lspconfig.pyright.setup{
-        capabilities = capabilities,
         settings = {
           python = {
             analysis = {
@@ -169,6 +133,46 @@ require("lazy").setup({
         }
       }
 
+      lspconfig.tsserver.setup{
+        filetypes = { "typescript", "typescriptreact", "typescript.tsx" },
+        cmd = { "typescript-language-server", "--stdio" },
+        root_dir = lspconfig.util.root_pattern("package.json", "tsconfig.json", "jsconfig.json", ".git"),
+      }
+
+      lspconfig.rust_analyzer.setup{
+        cmd = {"rust-analyzer"},
+        filetypes = {"rust"},
+        root_dir = lspconfig.util.root_pattern("Cargo.toml", "rust-project.json"),
+        settings = {
+          ["rust-analyzer"] = {
+            assist = {
+              importGranularity = "module",
+              importPrefix = "self",
+            },
+            cargo = {
+              loadOutDirsFromCheck = true
+            },
+            procMacro = {
+              enable = true
+            },
+          }
+        }
+      }
+
+      lspconfig.gopls.setup{
+        cmd = {"gopls", "serve"},
+        filetypes = {"go", "gomod"},
+        root_dir = lspconfig.util.root_pattern("go.work", "go.mod", ".git"),
+        settings = {
+          gopls = {
+            analyses = {
+              unusedparams = true,
+            },
+            staticcheck = true,
+          },
+        },
+      }
+
       -- Key mappings for LSP functionality
       vim.api.nvim_create_autocmd('LspAttach', {
         group = vim.api.nvim_create_augroup('UserLspConfig', {}),
@@ -176,12 +180,12 @@ require("lazy").setup({
           local opts = { buffer = ev.buf }
           vim.keymap.set('n', 'gd', vim.lsp.buf.definition, opts)
           vim.keymap.set('n', 'K', vim.lsp.buf.hover, opts)
-          vim.keymap.set('n', '<space>rn', vim.lsp.buf.rename, opts)
-          vim.keymap.set('n', '<space>ca', vim.lsp.buf.code_action, opts)
+          vim.keymap.set('n', '<leader>rn', vim.lsp.buf.rename, opts)
+          vim.keymap.set('n', '<leader>ca', vim.lsp.buf.code_action, opts)
           vim.keymap.set('n', 'gr', require('telescope.builtin').lsp_references, opts)
           vim.keymap.set('n', 'gi', vim.lsp.buf.implementation, opts)
-          vim.keymap.set('n', '<space>D', vim.lsp.buf.type_definition, opts)
-          vim.keymap.set('n', '<space>s', require('telescope.builtin').lsp_document_symbols, opts)
+          vim.keymap.set('n', '<leader>D', vim.lsp.buf.type_definition, opts)
+          vim.keymap.set('n', '<leader>s', require('telescope.builtin').lsp_document_symbols, opts)
         end,
       })
     end,
@@ -189,52 +193,18 @@ require("lazy").setup({
 
   -- Telescope for fuzzy finding
   {
-    'nvim-telescope/telescope.nvim',
+    "nvim-telescope/telescope.nvim",
     tag = '0.1.5',
     dependencies = { 'nvim-lua/plenary.nvim' },
     config = function()
-      local telescope = require('telescope')
       local builtin = require('telescope.builtin')
       
-      telescope.setup{
-        defaults = {
-          mappings = {
-            i = {
-              ["<C-h>"] = "which_key"
-            }
-          }
-        },
-        pickers = {
-          find_files = {
-            theme = "dropdown",
-          }
-        },
-      }
-
-      -- Keymaps for Telescope
+      -- Basic keymaps for Telescope
       vim.keymap.set('n', '<leader>ff', builtin.find_files, {})
       vim.keymap.set('n', '<leader>fg', builtin.live_grep, {})
       vim.keymap.set('n', '<leader>fb', builtin.buffers, {})
       vim.keymap.set('n', '<leader>fh', builtin.help_tags, {})
     end
-  },
-
-  -- Add img-clip.nvim plugin
-  {
-    "HakonHarnes/img-clip.nvim",
-    event = "BufEnter",
-    opts = {
-      -- Default options here
-      filetypes = {
-        markdown = {
-          url_encode_path = true,
-          template = "![$CURSOR]($FILE_PATH)",
-          drag_and_drop = {
-            download_images = true,
-          },
-        },
-      },
-    },
   },
 
   -- Add Codeium plugin
@@ -255,11 +225,41 @@ vim.api.nvim_create_autocmd("FileType", {
   end,
 })
 
+-- Set up filetype detection for Go
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = "go",
+  callback = function()
+    vim.opt_local.expandtab = false
+    vim.opt_local.shiftwidth = 4
+    vim.opt_local.tabstop = 4
+    vim.opt_local.softtabstop = 4
+  end,
+})
+
+-- Set up filetype detection for Rust
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = "rust",
+  callback = function()
+    vim.opt_local.expandtab = true
+    vim.opt_local.shiftwidth = 4
+    vim.opt_local.tabstop = 4
+    vim.opt_local.softtabstop = 4
+  end,
+})
+
+-- Set up filetype detection for TypeScript
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = {"typescript", "typescriptreact"},
+  callback = function()
+    vim.opt_local.expandtab = true
+    vim.opt_local.shiftwidth = 2
+    vim.opt_local.tabstop = 2
+    vim.opt_local.softtabstop = 2
+  end,
+})
+
 -- Enable mouse support
 vim.o.mouse = 'a'
 
 -- Enable clipboard integration
 vim.o.clipboard = 'unnamedplus'
-
--- Set up key mapping for quick jumping
-vim.api.nvim_set_keymap('n', '<C-]>', '<cmd>lua vim.lsp.buf.definition()<CR>', { noremap = true, silent = true })
