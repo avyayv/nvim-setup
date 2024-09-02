@@ -5,6 +5,9 @@ vim.wo.number = true
 vim.o.termguicolors = true
 vim.o.background = "dark"
 
+-- Set leader key to space
+vim.g.mapleader = " "
+
 -- Bootstrap lazy.nvim
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
 if not vim.loop.fs_stat(lazypath) then
@@ -56,42 +59,8 @@ require("lazy").setup({
       })
     end,
   },
-  {
-    "yetone/avante.nvim",
-    event = "VeryLazy",
-    opts = {
-      -- add any opts here
-    },
-    dependencies = {
-      "stevearc/dressing.nvim",
-      "nvim-lua/plenary.nvim",
-      "MunifTanjim/nui.nvim",
-      "nvim-tree/nvim-web-devicons",
-      {
-        'MeanderingProgrammer/render-markdown.nvim',
-        opts = {
-          file_types = { "markdown", "Avante" },
-        },
-        ft = { "markdown", "Avante" },
-      },
-    },
-  },
 
   -- Treesitter for improved syntax highlighting
-  {
-    "nvim-treesitter/nvim-treesitter",
-    build = ":TSUpdate",
-    config = function()
-      require("nvim-treesitter.configs").setup({
-        ensure_installed = { "python", "lua", "vim", "vimdoc", "query" },
-        highlight = {
-          enable = true,
-          additional_vim_regex_highlighting = false,
-        },
-        indent = { enable = true },
-      })
-    end,
-  },
   {
     "folke/tokyonight.nvim",
     lazy = false,
@@ -136,9 +105,59 @@ require("lazy").setup({
   -- LSP Configuration
   {
     "neovim/nvim-lspconfig",
+    dependencies = {
+      "hrsh7th/nvim-cmp",
+      "hrsh7th/cmp-nvim-lsp",
+      "L3MON4D3/LuaSnip",
+    },
     config = function()
       local lspconfig = require("lspconfig")
+      local cmp = require("cmp")
+      local luasnip = require("luasnip")
+
+      cmp.setup({
+        snippet = {
+          expand = function(args)
+            luasnip.lsp_expand(args.body)
+          end,
+        },
+        mapping = cmp.mapping.preset.insert({
+          ['<C-d>'] = cmp.mapping.scroll_docs(-4),
+          ['<C-f>'] = cmp.mapping.scroll_docs(4),
+          ['<C-Space>'] = cmp.mapping.complete(),
+          ['<CR>'] = cmp.mapping.confirm {
+            behavior = cmp.ConfirmBehavior.Replace,
+            select = true,
+          },
+          ['<Tab>'] = cmp.mapping(function(fallback)
+            if cmp.visible() then
+              cmp.select_next_item()
+            elseif luasnip.expand_or_jumpable() then
+              luasnip.expand_or_jump()
+            else
+              fallback()
+            end
+          end, { 'i', 's' }),
+          ['<S-Tab>'] = cmp.mapping(function(fallback)
+            if cmp.visible() then
+              cmp.select_prev_item()
+            elseif luasnip.jumpable(-1) then
+              luasnip.jump(-1)
+            else
+              fallback()
+            end
+          end, { 'i', 's' }),
+        }),
+        sources = {
+          { name = 'nvim_lsp' },
+          { name = 'luasnip' },
+        },
+      })
+
+      local capabilities = require('cmp_nvim_lsp').default_capabilities()
+
       lspconfig.pyright.setup{
+        capabilities = capabilities,
         settings = {
           python = {
             analysis = {
@@ -159,9 +178,45 @@ require("lazy").setup({
           vim.keymap.set('n', 'K', vim.lsp.buf.hover, opts)
           vim.keymap.set('n', '<space>rn', vim.lsp.buf.rename, opts)
           vim.keymap.set('n', '<space>ca', vim.lsp.buf.code_action, opts)
+          vim.keymap.set('n', 'gr', require('telescope.builtin').lsp_references, opts)
+          vim.keymap.set('n', 'gi', vim.lsp.buf.implementation, opts)
+          vim.keymap.set('n', '<space>D', vim.lsp.buf.type_definition, opts)
+          vim.keymap.set('n', '<space>s', require('telescope.builtin').lsp_document_symbols, opts)
         end,
       })
     end,
+  },
+
+  -- Telescope for fuzzy finding
+  {
+    'nvim-telescope/telescope.nvim',
+    tag = '0.1.5',
+    dependencies = { 'nvim-lua/plenary.nvim' },
+    config = function()
+      local telescope = require('telescope')
+      local builtin = require('telescope.builtin')
+      
+      telescope.setup{
+        defaults = {
+          mappings = {
+            i = {
+              ["<C-h>"] = "which_key"
+            }
+          }
+        },
+        pickers = {
+          find_files = {
+            theme = "dropdown",
+          }
+        },
+      }
+
+      -- Keymaps for Telescope
+      vim.keymap.set('n', '<leader>ff', builtin.find_files, {})
+      vim.keymap.set('n', '<leader>fg', builtin.live_grep, {})
+      vim.keymap.set('n', '<leader>fb', builtin.buffers, {})
+      vim.keymap.set('n', '<leader>fh', builtin.help_tags, {})
+    end
   },
 
   -- Add img-clip.nvim plugin
@@ -181,6 +236,12 @@ require("lazy").setup({
       },
     },
   },
+
+  -- Add Codeium plugin
+  {
+    "Exafunction/codeium.vim",
+    event = "BufEnter",
+  },
 })
 
 -- Set up filetype detection for Python
@@ -193,3 +254,12 @@ vim.api.nvim_create_autocmd("FileType", {
     vim.opt_local.softtabstop = 4
   end,
 })
+
+-- Enable mouse support
+vim.o.mouse = 'a'
+
+-- Enable clipboard integration
+vim.o.clipboard = 'unnamedplus'
+
+-- Set up key mapping for quick jumping
+vim.api.nvim_set_keymap('n', '<C-]>', '<cmd>lua vim.lsp.buf.definition()<CR>', { noremap = true, silent = true })
